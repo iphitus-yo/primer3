@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:id="@+id/cardView"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="4dp"
+    android:layout_margin="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <!-- Indicador de Status -->
+        <View
+            android:id="@+id/viewStatus"
+            android:layout_width="8dp"
+            android:layout_height="match_parent"
+            android:background="@color/orange_pending" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Placas do veículo -->
+            <TextView
+                android:id="@+id/tvPlacas"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/black"
+                tools:text="ABC1234 / XYZ5678" />
+
+            <!-- CRT/MIC/DUE -->
+            <TextView
+                android:id="@+id/tvCrt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:textColor="@android:color/black"
+                android:layout_marginTop="4dp"
+                tools:text="CRT: PR0001" />
+
+            <!-- Data e hora -->
+            <TextView
+                android:id="@+id/tvData"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="@android:color/darker_gray"
+                android:layout_marginTop="4dp"
+                tools:text="08/05/2025 - 08:45" />
+        </LinearLayout>
+
+        <!-- Botão para visualizar PDF -->
+        <Button
+            android:id="@+id/btnPdf"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="8dp"
+            android:text="PDF"
+            android:textColor="@android:color/white"
+            android:backgroundTint="@color/blue_primary"/>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

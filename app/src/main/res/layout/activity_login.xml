@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/login_gradient_background"
+    tools:context=".activities.LoginActivity">
+
+    <!-- Logo ParanaLog -->
+    <ImageView
+        android:id="@+id/ivLogo"
+        android:layout_width="0dp"
+        android:layout_height="100dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="32dp"
+        android:contentDescription="Logo ParanaLog"
+        android:scaleType="fitCenter"
+        android:src="@drawable/logo_paranalog"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Mensagem de Boas-vindas - REMOVIDA -->
+    <!-- Ícone de Caminhão - REMOVIDO -->
+
+    <!-- Card para conter os campos de login - ajustado para ficar mais próximo do logo -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardLogin"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="40dp"
+        android:layout_marginEnd="24dp"
+        app:cardBackgroundColor="#FFFFFF"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/ivLogo">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Campo de CPF com formatação melhorada -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilCpf"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:hint="CPF"
+                app:startIconDrawable="@drawable/ic_person"
+                app:startIconTint="#0047AB">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etCpf"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:maxLength="14"
+                    android:textColor="#333333"
+                    android:textSize="16sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Campo de Senha com ícone maior e mais interativo -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilSenha"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Senha"
+                app:endIconMode="password_toggle"
+                app:endIconTint="#0047AB"
+                app:startIconDrawable="@drawable/ic_lock"
+                app:startIconTint="#0047AB">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSenha"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPassword"
+                    android:textColor="#333333"
+                    android:textSize="16sp" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Botão de Login Biométrico Melhorado -->
+    <LinearLayout
+        android:id="@+id/layoutBiometric"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/cardLogin">
+
+        <ImageView
+            android:id="@+id/ivBiometria"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="Login biométrico"
+            android:focusable="true"
+            android:padding="8dp"
+            android:src="@drawable/ic_fingerprint"
+            app:tint="#0047AB" />
+
+        <TextView
+            android:id="@+id/tvBiometria"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Toque para usar biometria"
+            android:textColor="#0047AB"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- Botão Entrar - alterado para VERDE -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnEntrar"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="24dp"
+        android:backgroundTint="#007E33"
+        android:text="ENTRAR"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        app:cornerRadius="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/layoutBiometric"
+        app:rippleColor="#1A237E" />
+
+    <!-- Progress Bar para feedback de carregamento - cor alterada para combinar com o botão verde -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="8dp"
+        android:indeterminateTint="#007E33"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/btnEntrar"
+        app:layout_constraintStart_toEndOf="@+id/btnEntrar"
+        app:layout_constraintTop_toTopOf="@+id/btnEntrar" />
+
+    <!-- Link Cadastro melhorado -->
+    <TextView
+        android:id="@+id/tvCadastrar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="8dp"
+        android:text="Cadastrar novo usuário"
+        android:textColor="#0047AB"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnEntrar" />
+
+    <!-- Mensagem de Erro -->
+    <TextView
+        android:id="@+id/tvError"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="24dp"
+        android:gravity="center"
+        android:textColor="#F44336"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tvCadastrar"
+        tools:text="CPF ou senha incorretos"
+        tools:visibility="visible" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

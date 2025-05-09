@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TruckCheck</string>
+
+    <!-- Tela de Login -->
+    <string name="login_title">Login</string>
+    <string name="hint_cpf">CPF</string>
+    <string name="hint_senha">Senha (5 dígitos)</string>
+    <string name="btn_entrar">Entrar</string>
+    <string name="btn_cadastrar">Cadastrar novo usuário</string>
+    <string name="login_biometrico">Login biométrico</string>
+
+    <!-- Tela de Cadastro -->
+    <string name="cadastro_title">Cadastrar Novo Usuário</string>
+    <string name="hint_nome">Nome Completo</string>
+    <string name="hint_placa_cavalo">Placa do Cavalo</string>
+    <string name="hint_placa_carreta">Placa da Carreta</string>
+    <string name="hint_confirma_senha">Confirmar Senha</string>
+    <string name="btn_voltar">Voltar</string>
+
+    <!-- Tela Principal -->
+    <string name="main_title">Meus Checklists</string>
+    <string name="hint_busca">Buscar checklist...</string>
+    <string name="chip_todos">Todos</string>
+    <string name="chip_pendentes">Pendentes</string>
+    <string name="chip_hoje">Hoje</string>
+    <string name="empty_checklists">Nenhum checklist encontrado</string>
+
+    <!-- Tela de Perfil -->
+    <string name="perfil_title">Meu Perfil</string>
+    <string name="info_motorista">Informações do Motorista</string>
+    <string name="label_nome">Nome</string>
+    <string name="label_cpf">CPF</string>
+    <string name="label_placa_cavalo">Placa do Cavalo</string>
+    <string name="label_placa_carreta">Placa da Carreta</string>
+    <string name="estatisticas">Estatísticas</string>
+    <string name="total_checklists">Total de Checklists</string>
+    <string name="problemas_reportados">Problemas Reportados</string>
+    <string name="checklists_pendentes">Checklists Pendentes</string>
+    <string name="btn_logout">Sair da Conta</string>
+
+    <!-- Tela de Checklist -->
+    <string name="novo_checklist">Novo Checklist</string>
+    <string name="editar_checklist">Editar Checklist</string>
+    <string name="info_checklist">Informações do Checklist</string>
+    <string name="label_motorista">Motorista:</string>
+    <string name="label_data">Data:</string>
+    <string name="hint_n_lacre">Nº Lacre</string>
+    <string name="hint_peso_bruto">Peso Bruto (Kg)</string>
+    <string name="check_entrada">Entrada</string>
+    <string name="check_saida">Saída</string>
+    <string name="check_pernoite">Pernoite</string>
+    <string name="check_parada">Parada</string>
+    <string name="progresso_checklist">%d%% completo</string>
+    <string name="itens_inspecionados">Itens Inspecionados</string>
+    <string name="chip_motor">Motor</string>
+    <string name="chip_pneus">Pneus</string>
+    <string name="chip_cabine">Cabine</string>
+    <string name="sim">SIM</string>
+    <string name="nao">NÃO</string>
+    <string name="na">N/A</string>
+    <string name="hint_comentarios">Comentários</string>
+    <string name="btn_add_foto">Adicionar foto</string>
+
+    <!-- Diálogos -->
+    <string name="dialog_sair_sem_salvar_title">Sair sem salvar?</string>
+    <string name="dialog_sair_sem_salvar_msg">Se você sair agora, todas as alterações serão perdidas.</string>
+    <string name="dialog_itens_nao_preenchidos_title">Itens não preenchidos</string>
+    <string name="dialog_itens_nao_preenchidos_msg">Existem %d itens não preenchidos. Deseja continuar mesmo assim?</string>
+    <string name="dialog_foto_title">Foto</string>
+    <string name="dialog_foto_tirar">Tirar foto</string>
+    <string name="dialog_foto_galeria">Escolher da galeria</string>
+    <string name="dialog_foto_remover">Remover foto</string>
+    <string name="btn_sim">Sim</string>
+    <string name="btn_nao">Não</string>
+    <string name="btn_cancelar">Cancelar</string>
+    <string name="btn_sair">Sair</string>
+
+    <!-- Mensagens Toast -->
+    <string name="toast_preencha_campos">Preencha todos os campos</string>
+    <string name="toast_cpf_invalido">CPF inválido</string>
+    <string name="toast_senha_5_digitos">A senha deve ter 5 dígitos</string>
+    <string name="toast_senhas_nao_coincidem">As senhas não coincidem</string>
+    <string name="toast_placa_invalida">Formato de placa inválido</string>
+    <string name="toast_usuario_existente">Já existe um usuário com este CPF</string>
+    <string name="toast_usuario_cadastrado">Usuário cadastrado com sucesso!</string>
+    <string name="toast_login_invalido">CPF ou senha incorretos</string>
+    <string name="toast_checklist_salvo">Checklist salvo com sucesso!</string>
+    <string name="toast_email_enviado">E-mail enviado com sucesso!</string>
+    <string name="toast_pdf_sem_email">O PDF foi salvo, mas não foi possível enviar o e-mail. Tente novamente mais tarde.</string>
+    <string name="toast_sem_conexao">Sem conexão com a internet. O PDF foi salvo e o e-mail será enviado quando houver conexão.</string>
+    <string name="toast_erro_pdf">Erro ao gerar PDF: %s</string>
+    <string name="toast_erro_salvar">Erro ao salvar checklist: %s</string>
+</resources>

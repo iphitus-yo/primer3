@@ -1,0 +1,35 @@
+<resources>
+    <!-- Tamanhos de fonte para maior legibilidade -->
+    <dimen name="text_size_extra_large">22sp</dimen>
+    <dimen name="text_size_large">20sp</dimen>
+    <dimen name="text_size_medium">18sp</dimen>
+    <dimen name="text_size_normal">16sp</dimen>
+    <dimen name="text_size_small">14sp</dimen>
+
+    <!-- Tamanhos de componentes -->
+    <dimen name="icon_size_normal">24dp</dimen>
+    <dimen name="min_touch_target">48dp</dimen>
+
+    <!-- Espaçamentos -->
+    <dimen name="padding_extra_large">32dp</dimen>
+    <dimen name="padding_large">24dp</dimen>
+    <dimen name="padding_normal">16dp</dimen>
+    <dimen name="padding_small">8dp</dimen>
+    <dimen name="padding_tiny">4dp</dimen>
+
+    <!-- Margens -->
+    <dimen name="margin_extra_large">32dp</dimen>
+    <dimen name="margin_large">24dp</dimen>
+    <dimen name="margin_normal">16dp</dimen>
+    <dimen name="margin_small">8dp</dimen>
+    <dimen name="margin_tiny">4dp</dimen>
+
+    <!-- Elevações -->
+    <dimen name="elevation_normal">4dp</dimen>
+    <dimen name="elevation_large">8dp</dimen>
+
+    <!-- Raios de cantos -->
+    <dimen name="corner_radius_small">4dp</dimen>
+    <dimen name="corner_radius_normal">8dp</dimen>
+    <dimen name="corner_radius_large">16dp</dimen>
+</resources>

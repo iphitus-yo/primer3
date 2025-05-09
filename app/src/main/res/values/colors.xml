@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cores originais mantidas -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="blue_primary">#2196F3</color>
+    <color name="blue_dark">#0D47A1</color>
+    <color name="green_success">#4CAF50</color>
+    <color name="orange_pending">#FF9800</color>
+    <color name="red_alert">#F44336</color>
+    <color name="gray_light">#E0E0E0</color>
+    <color name="gray_text">#757575</color>
+    <color name="text_secondary">#757575</color>
+    <color name="notification_color">#1E40AF</color>
+
+
+    <!-- Novas cores com contraste aprimorado -->
+    <color name="text_color_primary">#000000</color>
+    <color name="background_color">#FFFFFF</color>
+
+    <!-- Versões mais fortes das cores de status para melhor contraste -->
+    <color name="status_positive">#007E33</color> <!-- Verde mais escuro -->
+    <color name="status_negative">#CC0000</color> <!-- Vermelho mais escuro -->
+    <color name="status_warning">#EF6C00</color>  <!-- Laranja mais escuro para N/A -->
+
+    <!-- Cores para destaques e headers -->
+    <color name="header_background">#0D47A1</color> <!-- Azul escuro -->
+    <color name="header_text">#FFFFFF</color> <!-- Branco -->
+    <color name="divider_color">#BDBDBD</color> <!-- Cinza médio -->
+
+    <!-- Atualizando colorAccent para a cor verde do botão -->
+    <color name="colorAccent">#007E33</color>
+
+    <!-- Adicionando nova cor específica para botões de ação principal -->
+    <color name="button_primary">#007E33</color>
+
+    <!-- Cores para os itens do checklist -->
+    <color name="item_especial_background">#E6F7FF</color>
+    <color name="button_inactive">#EEEEEE</color>
+    <color name="button_positive">#4CAF50</color>
+    <color name="button_negative">#F44336</color>
+    <color name="button_na_selected">#FF9800</color>
+    <color name="na_destacado">#FFC107</color>
+    <color name="na_normal">#DDDDDD</color>
+
+</resources>
