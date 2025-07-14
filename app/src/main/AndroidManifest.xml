@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Permissões -->
+
+    <!-- Permissões básicas do app -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -10,6 +12,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Permissão necessária para instalar pacotes APK (AppUpdater) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- 🔥 FIREBASE: Permissão para wake lock (melhora sincronização em background) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Features -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -21,9 +33,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TruckCheck"
         android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <!-- Activities com caminhos absolutos -->
+        <!-- 🔥 FIREBASE: Configurações básicas (opcionais mas recomendadas) -->
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="true" />
+
+        <!-- Activities -->
         <activity
             android:name="com.paranalog.truckcheck.activities.SplashActivity"
             android:exported="true"
@@ -48,16 +69,25 @@
             android:name="com.paranalog.truckcheck.activities.MainActivity"
             android:exported="false" />
 
+        <!-- 🔥 FIREBASE: ChecklistActivity já integrado com Firebase -->
         <activity
             android:name="com.paranalog.truckcheck.activities.ChecklistActivity"
             android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
 
         <activity
             android:name="com.paranalog.truckcheck.activities.PerfilActivity"
             android:exported="false" />
 
-        <!-- FileProvider para compartilhar arquivos PDF e imagens -->
+        <!-- Manual Activity - NOVA ADIÇÃO -->
+        <activity
+            android:name="com.paranalog.truckcheck.activities.ManualActivity"
+            android:exported="false"
+            android:label="Manual do App"
+            android:theme="@style/Theme.TruckCheck" />
+
+        <!-- FileProvider para compartilhar arquivos PDF, imagens e APKs (AppUpdater) -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -68,8 +98,22 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Services -->
         <service android:name="com.paranalog.truckcheck.services.SyncService" />
 
+        <!-- 🔥 FIREBASE: Serviço para Firebase Messaging (futuro - notificações push) -->
+        <!-- OPCIONAL: Descomente se quiser notificações push depois -->
+        <!--
+        <service
+            android:name="com.paranalog.truckcheck.firebase.TruckCheckFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        -->
+
+        <!-- Receivers -->
         <receiver
             android:name="com.paranalog.truckcheck.receivers.BootReceiver"
             android:exported="false">
@@ -77,5 +121,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- 🔥 FIREBASE: Receiver para conectividade (melhora reenvios automáticos) -->
+        <receiver
+            android:name="com.paranalog.truckcheck.receivers.NetworkChangeReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

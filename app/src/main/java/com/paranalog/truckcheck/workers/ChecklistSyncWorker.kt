@@ -47,7 +47,7 @@ class ChecklistSyncWorker(
                     val pdfFile = File(pdfPath)
                     if (pdfFile.exists()) {
                         // Enviar e-mail
-                        val destinatario = "juniorrafael@icloud.com" // E-mail fixo conforme especificação
+                        val destinatario = "checklist@paranalog.com.br" // E-mail fixo conforme especificação
                         val assunto = "Checklist de Inspeção - ${checklist.placaCavalo} - ${dateFormat.format(checklist.data)}"
                         val corpo = "Segue em anexo o checklist de inspeção do veículo ${checklist.placaCavalo} / ${checklist.placaCarreta} realizado em ${dateFormat.format(checklist.data)} às ${timeFormat.format(checklist.data)}."
 

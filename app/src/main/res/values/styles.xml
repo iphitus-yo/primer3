@@ -14,12 +14,13 @@
         <item name="android:statusBarColor">@color/blue_dark</item>
     </style>
 
+
     <!-- Splash screen theme -->
     <style name="SplashTheme" parent="Theme.TruckCheck">
-        <item name="android:windowBackground">@color/blue_primary</item>
+        <item name="android:statusBarColor">@color/blue_dark</item>
+        <item name="android:navigationBarColor">@color/blue_dark</item>
         <item name="android:windowFullscreen">true</item>
     </style>
-
     <!-- Button styles -->
     <style name="ButtonPrimary" parent="Widget.MaterialComponents.Button">
         <item name="android:background">@color/blue_primary</item>

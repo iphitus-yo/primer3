@@ -1,22 +1,27 @@
 package com.paranalog.truckcheck.activities
 
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.paranalog.truckcheck.R
+import com.paranalog.truckcheck.database.AppDatabase
 import com.paranalog.truckcheck.databinding.ActivityPerfilBinding
 import com.paranalog.truckcheck.services.NotificationService
 import com.paranalog.truckcheck.utils.SharedPrefsManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PerfilActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPerfilBinding
     private lateinit var sharedPrefs: SharedPrefsManager
     private lateinit var notificationService: NotificationService
+    private val TAG = "PerfilActivity"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,13 +62,73 @@ class PerfilActivity : AppCompatActivity() {
 
     /**
      * Configura as estatísticas do usuário
-     * Você pode adaptar para usar dados reais do seu banco
+     * com dados reais do banco de dados
      */
     private fun setupEstatisticas() {
-        // Preencha com dados reais do seu banco de dados aqui
-        binding.tvTotalChecklists.text = "0"
-        binding.tvProblemasReportados.text = "0"
-        binding.tvChecklistsPendentes.text = "0"
+        // Inicialmente, mostra valores temporários enquanto carrega
+        binding.tvTotalChecklists.text = "..."
+        binding.tvProblemasReportados.text = "..."
+        binding.tvChecklistsPendentes.text = "..."
+
+        // Executar em uma coroutine para não bloquear a UI
+        lifecycleScope.launch {
+            try {
+                val db = AppDatabase.getDatabase(this@PerfilActivity)
+
+                // Obter o CPF do usuário logado
+                val cpf = sharedPrefs.getUsuarioCpf()
+                Log.d(TAG, "Buscando estatísticas para o CPF: $cpf")
+
+                // Buscar estatísticas no banco de dados em background
+                val (total, problemas, pendentes) = withContext(Dispatchers.IO) {
+                    try {
+                        // Total de checklists do usuário
+                        val totalCount = db.checklistDao().getChecklistCountByMotorista(cpf)
+                        Log.d(TAG, "Total de checklists: $totalCount")
+
+                        // Checklists pendentes (emails não enviados)
+                        val pendingCount = db.checklistDao().getChecklistsPendentesCount(cpf)
+                        Log.d(TAG, "Checklists pendentes: $pendingCount")
+
+                        // Problemas reportados (items com status "NÃO")
+                        val problemCount = db.checklistDao().getProblemasReportadosCount(cpf)
+                        Log.d(TAG, "Problemas reportados: $problemCount")
+
+                        Triple(totalCount, problemCount, pendingCount)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Erro durante consulta ao banco: ${e.message}", e)
+                        Triple(0, 0, 0) // Valores default em caso de erro
+                    }
+                }
+
+                // Atualizar a UI com os valores obtidos
+                withContext(Dispatchers.Main) {
+                    binding.tvTotalChecklists.text = total.toString()
+                    binding.tvProblemasReportados.text = problemas.toString()
+                    binding.tvChecklistsPendentes.text = pendentes.toString()
+                }
+
+                Log.d(TAG, "Estatísticas carregadas: Total=$total, Problemas=$problemas, Pendentes=$pendentes")
+
+            } catch (e: Exception) {
+                // Em caso de erro, mostrar log e definir valores zerados
+                Log.e(TAG, "Erro ao carregar estatísticas: ${e.message}", e)
+
+                // Atualizar UI com zeros para indicar erro
+                withContext(Dispatchers.Main) {
+                    binding.tvTotalChecklists.text = "0"
+                    binding.tvProblemasReportados.text = "0"
+                    binding.tvChecklistsPendentes.text = "0"
+
+                    // Mostrar toast de erro
+                    Toast.makeText(
+                        this@PerfilActivity,
+                        "Não foi possível carregar estatísticas",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     /**

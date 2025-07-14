@@ -1,12 +1,22 @@
 package com.paranalog.truckcheck.activities
 
+import android.Manifest
+import android.app.AlarmManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.paranalog.truckcheck.R
@@ -15,7 +25,9 @@ import com.paranalog.truckcheck.database.AppDatabase
 import com.paranalog.truckcheck.databinding.ActivityMainBinding
 import com.paranalog.truckcheck.models.Checklist
 import com.paranalog.truckcheck.activities.PerfilActivity
+import com.paranalog.truckcheck.activities.ManualActivity
 import com.paranalog.truckcheck.services.NotificationService
+import com.paranalog.truckcheck.utils.ChecklistUpdater
 import com.paranalog.truckcheck.utils.EmailPendingManager
 import com.paranalog.truckcheck.utils.SharedPrefsManager
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +42,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPrefsManager: SharedPrefsManager
     private lateinit var checklistAdapter: ChecklistAdapter
     private var allChecklists = listOf<Checklist>()
-    private val TAG = "MainActivity"
+
+    companion object {
+        private const val TAG = "MainActivity"
+        private const val REQUEST_NOTIFICATION_PERMISSION = 100
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,16 +62,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Inicializar o serviço de notificações
-        val notificationService = NotificationService(this)
-
-        // Agendar notificações com base nas preferências salvas
-        // Verifique se as notificações estão configuradas antes de agendar
-        notificationService.scheduleNotifications(
-            sharedPrefsManager.getNotificacaoManhaAtivada(),
-            sharedPrefsManager.getNotificacaoTardeAtivada(),
-            sharedPrefsManager.getNotificacaoNoiteAtivada()
-        )
+        // Configurar notificações
+        setupNotifications()
 
         // Configurar Toolbar
         setSupportActionBar(binding.toolbar)
@@ -100,6 +108,98 @@ class MainActivity : AppCompatActivity() {
         carregarChecklists()
     }
 
+    private fun setupNotifications() {
+        // Verificar e solicitar permissões para Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.d(TAG, "Solicitando permissão de notificação para Android 13+")
+
+                // Mostrar diálogo explicativo antes de solicitar permissão
+                AlertDialog.Builder(this)
+                    .setTitle("Permissão de Notificações")
+                    .setMessage("Para receber lembretes no horário correto e informações importantes sobre seus checklists, precisamos enviar notificações.")
+                    .setPositiveButton("Configurar") { _, _ ->
+                        // Solicitar permissão
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                            REQUEST_NOTIFICATION_PERMISSION
+                        )
+                    }
+                    .setNegativeButton("Depois", null)
+                    .show()
+
+                return // Sair do método e deixar onRequestPermissionsResult finalizar a configuração
+            }
+        }
+
+        // Verificar permissão para alarmes exatos no Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Log.d(TAG, "Sem permissão para agendar alarmes exatos no Android 12+")
+                // Informar o usuário e abrir configurações
+                AlertDialog.Builder(this)
+                    .setTitle("Permissão necessária")
+                    .setMessage("Para receber lembretes nos horários corretos, o aplicativo precisa de permissão para agendar alarmes exatos.")
+                    .setPositiveButton("Configurar") { _, _ ->
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                            intent.putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Erro ao abrir configurações de alarme", e)
+                            Toast.makeText(this, "Vá para Configurações > Apps > TruckCheck > Permissões e ative 'Alarmes exatos'", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .setNegativeButton("Depois", null)
+                    .show()
+
+                // Ainda deve agendar as notificações, mesmo que não sejam exatas
+            }
+        }
+
+        // Agendar notificações
+        Log.d(TAG, "Agendando notificações: manhã=${sharedPrefsManager.getNotificacaoManhaAtivada()}, " +
+                "tarde=${sharedPrefsManager.getNotificacaoTardeAtivada()}, " +
+                "noite=${sharedPrefsManager.getNotificacaoNoiteAtivada()}")
+
+        val notificationService = NotificationService(this)
+        notificationService.scheduleNotifications(
+            sharedPrefsManager.getNotificacaoManhaAtivada(),
+            sharedPrefsManager.getNotificacaoTardeAtivada(),
+            sharedPrefsManager.getNotificacaoNoiteAtivada()
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Permissão de notificação concedida, configurando notificações")
+                // Permissão concedida, continuar com a configuração
+                setupNotifications()
+            } else {
+                Log.d(TAG, "Permissão de notificação negada")
+                // Permissão negada, informar o usuário
+                Toast.makeText(
+                    this,
+                    "Sem permissão para notificações, você não receberá lembretes de checklist",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
 
@@ -109,6 +209,10 @@ class MainActivity : AppCompatActivity() {
         // Verificar emails pendentes quando a activity é resumida
         val emailPendingManager = EmailPendingManager(this)
         emailPendingManager.verificarEnviosPendentes(this)
+
+        // Verificar se há checklists com localizações pendentes para atualizar
+        val checklistUpdater = ChecklistUpdater(this)
+        checklistUpdater.verificarEAtualizarChecklistsPendentes(this)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -118,6 +222,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_manual -> {
+                // Abrir manual do app
+                val intent = Intent(this, ManualActivity::class.java)
+                startActivity(intent)
+                true
+            }
             R.id.action_refresh -> {
                 carregarChecklists()
                 true

@@ -44,13 +44,26 @@ class PdfGenerator(private val context: Context) {
                 dir.mkdirs()
             }
 
-            // Criar nome do arquivo
+            // Criar nome do arquivo com formato melhorado
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val filename = "checklist_${checklist.placaCavalo}_$timestamp.pdf"
+            val dataFormatada = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(checklist.data)
+
+            // Criar parte do CRT para o nome do arquivo
+            val crtParte = if (!checklist.crtMicDue.isNullOrBlank()) {
+                "CRT${checklist.crtMicDue}_"
+            } else {
+                "SemCRT_"
+            }
+
+            // Obter iniciais do motorista (no máximo 3 caracteres)
+            val iniciais = obterIniciaisNome(checklist.motoristaName ?: "")
+
+            // Nome do arquivo: CRT_INICIAIS_PLACA_DATA.pdf
+            val filename = "${crtParte}${iniciais}_${checklist.placaCavalo}_$dataFormatada.pdf"
             val file = File(dir, filename)
 
             // Log para debug
-            Log.d(TAG, "Gerando PDF para checklist ID: ${checklist.id}")
+            Log.d(TAG, "Gerando PDF para checklist ID: ${checklist.id} com nome: $filename")
             Log.d(TAG, "Dados do checklist: Responsável: ${checklist.motoristaName}, " +
                     "Placas: ${checklist.placaCavalo}/${checklist.placaCarreta}, " +
                     "CRT: ${checklist.crtMicDue}")
@@ -78,17 +91,37 @@ class PdfGenerator(private val context: Context) {
         }
     }
 
+    // Método para obter iniciais ou uma parte do nome do motorista
+    private fun obterIniciaisNome(nomeCompleto: String): String {
+        if (nomeCompleto.isBlank()) return "XXX"
+
+        val partes = nomeCompleto.split(" ")
+
+        // Se o nome tiver apenas uma palavra, usar os 3 primeiros caracteres
+        if (partes.size == 1) {
+            return partes[0].take(3).uppercase()
+        }
+
+        // Se tiver 2 ou mais partes, pegar a primeira letra de até 3 palavras
+        return partes
+            .filter { it.isNotBlank() }
+            .take(3)
+            .joinToString("") { it.first().toString() }
+            .uppercase()
+    }
+
     private fun adicionarCabecalho(document: Document, checklist: Checklist) {
         // Garantir que temos valores não nulos
         val placaCavalo = checklist.placaCavalo ?: "N/A"
         val placaCarreta = checklist.placaCarreta ?: "N/A"
         val motoristaNome = checklist.motoristaName ?: "N/A"
 
-        // Formatar a localização para garantir um valor adequado
+        // Melhorar tratamento da localização
         val localColeta = when {
-            checklist.localColeta.isNullOrBlank() -> "Localização não disponível"
-            checklist.localColeta == "Localização não disponível" -> "Localização não disponível no momento da coleta"
-            checklist.localColeta!!.startsWith("Lat:") -> "Coordenadas: ${checklist.localColeta}"
+            checklist.localColeta == null -> "Localização indisponível"
+            checklist.localColeta.isBlank() -> "Localização indisponível"
+            checklist.localColeta == "Obtendo localização..." -> "Localização indisponível"
+            checklist.localColeta.startsWith("Lat:") -> checklist.localColeta // Manter coordenadas como estão
             else -> checklist.localColeta
         }
 

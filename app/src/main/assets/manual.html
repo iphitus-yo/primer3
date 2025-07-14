@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual TruckCheck</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 100%;
+            background: white;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1e40af, #1d4ed8);
+            color: white;
+            padding: 16px;
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            padding: 8px;
+            margin-right: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .back-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* Quick Summary */
+        .quick-summary {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            padding: 16px;
+            margin: 16px;
+            border-radius: 12px;
+        }
+
+        .quick-summary h2 {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .quick-summary p {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        /* Sections */
+        .sections {
+            padding: 16px;
+        }
+
+        .section {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .section-header {
+            background: #f9fafb;
+            padding: 16px;
+            border: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .section-header:hover {
+            background: #f3f4f6;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+        }
+
+        .section-icon {
+            font-size: 20px;
+            margin-right: 12px;
+        }
+
+        .chevron {
+            font-size: 18px;
+            color: #6b7280;
+            transition: transform 0.2s;
+        }
+
+        .section.expanded .chevron {
+            transform: rotate(180deg);
+        }
+
+        .section-content {
+            padding: 16px;
+            border-top: 1px solid #e5e7eb;
+            display: none;
+        }
+
+        .section.expanded .section-content {
+            display: block;
+        }
+
+        /* Steps */
+        .step {
+            padding: 16px;
+            margin-bottom: 16px;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+
+        .step-1 { background: #eff6ff; border-left-color: #3b82f6; }
+        .step-2 { background: #f0fdf4; border-left-color: #10b981; }
+        .step-3 { background: #fffbeb; border-left-color: #f59e0b; }
+        .step-4 { background: #faf5ff; border-left-color: #8b5cf6; }
+
+        .step h4 {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .step-1 h4 { color: #1e40af; }
+        .step-2 h4 { color: #065f46; }
+        .step-3 h4 { color: #92400e; }
+        .step-4 h4 { color: #6b21a8; }
+
+        .step p, .step li {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .step-1 p, .step-1 li { color: #1e40af; }
+        .step-2 p, .step-2 li { color: #065f46; }
+        .step-3 p, .step-3 li { color: #92400e; }
+        .step-4 p, .step-4 li { color: #6b21a8; }
+
+        .highlight {
+            background: rgba(59, 130, 246, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .btn-novo-checklist {
+            background: #059669;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .btn-save {
+            background: #10b981;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        /* Status Colors */
+        .status-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border: 1px solid;
+        }
+
+        .status-verde {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+
+        .status-amarelo {
+            background: #fffbeb;
+            border-color: #fed7aa;
+        }
+
+        .status-vermelho {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .status-icon {
+            font-size: 24px;
+            margin-right: 12px;
+        }
+
+        .status-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .status-verde .status-title { color: #065f46; }
+        .status-amarelo .status-title { color: #92400e; }
+        .status-vermelho .status-title { color: #991b1b; }
+
+        .status-desc {
+            font-size: 13px;
+        }
+
+        .status-verde .status-desc { color: #047857; }
+        .status-amarelo .status-desc { color: #b45309; }
+        .status-vermelho .status-desc { color: #b91c1c; }
+
+        /* Photo Steps */
+        .photo-steps {
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .photo-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .photo-icon {
+            color: #2563eb;
+            margin-right: 8px;
+        }
+
+        .photo-step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .step-number {
+            background: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            margin-right: 8px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .tip-box {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .tip-box p {
+            color: #9a3412;
+            font-size: 13px;
+        }
+
+        /* Tips Section */
+        .tip-card {
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tip-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .tip-card-internet { background: #eff6ff; }
+        .tip-card-battery { background: #f0fdf4; }
+        .tip-card-problem { background: #fef2f2; }
+
+        .tip-card-internet .tip-header { color: #1e40af; }
+        .tip-card-battery .tip-header { color: #065f46; }
+        .tip-card-problem .tip-header { color: #991b1b; }
+
+        .tip-list {
+            list-style: none;
+            font-size: 13px;
+        }
+
+        .tip-list li {
+            margin-bottom: 4px;
+        }
+
+        .tip-card-internet .tip-list { color: #1e40af; }
+        .tip-card-battery .tip-list { color: #047857; }
+        .tip-card-problem .tip-list { color: #b91c1c; }
+
+        /* Help Section */
+        .help-section {
+            padding: 16px;
+        }
+
+        .help-card {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .help-card h3 {
+            font-weight: bold;
+            color: #9a3412;
+            margin-bottom: 8px;
+        }
+
+        .help-card p {
+            color: #9a3412;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .help-btn {
+            background: #ea580c;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .help-btn:hover {
+            background: #dc2626;
+        }
+
+        /* Footer */
+        .footer {
+            background: #f3f4f6;
+            padding: 16px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        .footer p:first-child {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        /* Grid for options */
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 8px 0;
+        }
+
+        .option-item {
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .option-sim {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .option-nao {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Animations */
+        .section-content {
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <button class="back-btn" onclick="window.Android?.goBack()">←</button>
+            <div>
+                <h1>📱 Manual TruckCheck</h1>
+                <p>Guia rápido para motoristas</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Summary -->
+    <div class="quick-summary">
+        <h2>🎯 RESUMO RÁPIDO</h2>
+        <p>✅ Preencher TODOS os itens</p>
+        <p>📷 Tirar foto dos problemas</p>
+        <p>💾 Salvar no final</p>
+        <p>🟢 Verde = Liberado | 🟡 Amarelo = Aguardar</p>
+    </div>
+
+    <!-- Sections -->
+    <div class="sections">
+        <!-- Como fazer checklist -->
+        <div class="section expanded" id="section-passos">
+            <button class="section-header" onclick="toggleSection('passos')">
+                <div class="section-title">
+                    <span class="section-icon">📋</span>
+                    <span>🚀 COMO FAZER CHECKLIST</span>
+                </div>
+                <span class="chevron">▼</span>
+            </button>
+            <div class="section-content">
+                <div class="step step-1">
+                    <h4>1º PASSO - ENTRAR NO APP</h4>
+                    <p>• Toque em <span class="btn-novo-checklist">"Novo Checklist"</span></p>
+                </div>
+
+                <div class="step step-2">
+                    <h4>2º PASSO - PREENCHER DADOS</h4>
+                    <ul style="list-style: none; padding: 0;">
+                        <li>• <strong>CRT/MIC/DUE:</strong> Número do documento</li>
+                        <li>• <strong>Nº Lacre:</strong> Número do lacre</li>
+                        <li>• <strong>Peso Bruto:</strong> Ex: 15.000</li>
+                        <li>• <strong>Marcar:</strong> Entrada ☑️ Saída ☑️ Pernoite ☑️</li>
+                    </ul>
+                </div>
+
+                <div class="step step-3">
+                    <h4>3º PASSO - INSPEÇÃO</h4>
+                    <p>Para cada item da lista:</p>
+                    <div class="options-grid">
+                        <div class="option-item option-sim">✅ SIM = OK</div>
+                        <div class="option-item option-nao">❌ NÃO = Problema</div>
+                    </div>
+                    <p><strong>📷 Foto obrigatória</strong> se marcar "NÃO"</p>
+                </div>
+
+                <div class="step step-4">
+                    <h4>4º PASSO - SALVAR</h4>
+                    <p>• Toque no botão <span class="btn-save">SALVAR</span></p>
+                    <p style="font-size: 12px; margin-top: 4px;">⏱️ Aguarde até 15 segundos</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entenda as cores -->
+        <div class="section" id="section-cores">
+            <button class="section-header" onclick="toggleSection('cores')">
+                <div class="section-title">
+                    <span class="section-icon">🎨</span>
+                    <span>🚦 ENTENDA AS CORES</span>
+                </div>
+                <span class="chevron">▼</span>
+            </button>
+            <div class="section-content">
+                <div class="status-item status-verde">
+                    <span class="status-icon">✅</span>
+                    <div>
+                        <div class="status-title">🟢 VERDE</div>
+                        <div class="status-desc">Email enviado - Tudo certo!</div>
+                    </div>
+                </div>
+
+                <div class="status-item status-amarelo">
+                    <span class="status-icon">⚠️</span>
+                    <div>
+                        <div class="status-title">🟡 AMARELO</div>
+                        <div class="status-desc">Sem internet - Enviará depois</div>
+                    </div>
+                </div>
+
+                <div class="status-item status-vermelho">
+                    <span class="status-icon">❌</span>
+                    <div>
+                        <div class="status-title">🔴 VERMELHO</div>
+                        <div class="status-desc">Incompleto - Precisa terminar</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Como tirar fotos -->
+        <div class="section" id="section-fotos">
+            <button class="section-header" onclick="toggleSection('fotos')">
+                <div class="section-title">
+                    <span class="section-icon">📸</span>
+                    <span>📷 COMO TIRAR FOTOS</span>
+                </div>
+                <span class="chevron">▼</span>
+            </button>
+            <div class="section-content">
+                <div class="photo-steps">
+                    <div class="photo-header">
+                        <span class="photo-icon">📷</span>
+                        <span>Passo a Passo:</span>
+                    </div>
+
+                    <div class="photo-step">
+                        <span class="step-number">1</span>
+                        <span>Toque no ícone 📷 do item</span>
+                    </div>
+
+                    <div class="photo-step">
+                        <span class="step-number">2</span>
+                        <span>Escolha: "Tirar foto" ou "Galeria"</span>
+                    </div>
+
+                    <div class="photo-step">
+                        <span class="step-number">3</span>
+                        <span>Aponte bem para o problema</span>
+                    </div>
+
+                    <div class="photo-step">
+                        <span class="step-number">4</span>
+                        <span>Confirme tocando em ✅</span>
+                    </div>
+                </div>
+
+                <div class="tip-box">
+                    <p>💡 <strong>Dica:</strong> Foto é obrigatória quando marcar "NÃO" em qualquer item!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dicas importantes -->
+        <div class="section" id="section-dicas">
+            <button class="section-header" onclick="toggleSection('dicas')">
+                <div class="section-title">
+                    <span class="section-icon">💡</span>
+                    <span>⚠️ DICAS IMPORTANTES</span>
+                </div>
+                <span class="chevron">▼</span>
+            </button>
+            <div class="section-content">
+                <div class="tip-card tip-card-internet">
+                    <div class="tip-header">
+                        <span style="margin-right: 8px;">📶</span>
+                        <span>Internet/Sinal</span>
+                    </div>
+                    <ul class="tip-list">
+                        <li>• <strong>Com sinal:</strong> Fica 🟢 verde na hora</li>
+                        <li>• <strong>Sem sinal:</strong> Fica 🟡 amarelo, envia depois</li>
+                        <li>• <strong>Não se preocupe:</strong> App guarda tudo!</li>
+                    </ul>
+                </div>
+
+                <div class="tip-card tip-card-battery">
+                    <div class="tip-header">
+                        <span style="margin-right: 8px;">🔋</span>
+                        <span>Bateria</span>
+                    </div>
+                    <ul class="tip-list">
+                        <li>• Mantenha celular carregado</li>
+                        <li>• Se acabar, dados ficam salvos</li>
+                    </ul>
+                </div>
+
+                <div class="tip-card tip-card-problem">
+                    <div class="tip-header">
+                        <span style="margin-right: 8px;">🆘</span>
+                        <span>Se der problema</span>
+                    </div>
+                    <ul class="tip-list">
+                        <li>• <strong>App travou:</strong> Feche e abra novamente</li>
+                        <li>• <strong>Não salvou:</strong> Tente com internet</li>
+                        <li>• <strong>Dúvidas:</strong> Chame o responsável</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="help-section">
+        <div class="help-card">
+            <h3>📞 Precisa de Ajuda?</h3>
+            <p>Em caso de dúvidas ou problemas</p>
+            <button class="help-btn" onclick="window.Android?.callSupport()">
+                Ligar para Suporte
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>💡 LEMBRE-SE:</p>
+        <p>Checklist é obrigatório antes de sair com o caminhão!</p>
+    </div>
+</div>
+
+<script>
+    function toggleSection(sectionId) {
+        const section = document.getElementById('section-' + sectionId);
+        const allSections = document.querySelectorAll('.section');
+
+        // Close all other sections
+        allSections.forEach(s => {
+            if (s.id !== 'section-' + sectionId) {
+                s.classList.remove('expanded');
+            }
+        });
+
+        // Toggle current section
+        section.classList.toggle('expanded');
+    }
+
+    // Initialize with first section open
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('section-passos').classList.add('expanded');
+    });
+
+    // Android interface functions
+    if (typeof Android !== 'undefined') {
+        // Functions that can be called from Android
+    }
+</script>
+</body>
+</html>

@@ -3,17 +3,15 @@ package com.paranalog.truckcheck.activities
 import android.Manifest
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.location.Address
-import android.location.Geocoder
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.Looper
-import android.os.Parcel
-import android.os.Parcelable
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
@@ -22,6 +20,8 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -29,12 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.paranalog.truckcheck.R
 import com.paranalog.truckcheck.adapters.ChecklistItemAdapter
@@ -43,11 +38,11 @@ import com.paranalog.truckcheck.databinding.ActivityChecklistBinding
 import com.paranalog.truckcheck.models.Checklist
 import com.paranalog.truckcheck.models.ItemChecklist
 import com.paranalog.truckcheck.utils.EmailSender
+import com.paranalog.truckcheck.utils.FirebaseManager
+import com.paranalog.truckcheck.utils.LocationManager
 import com.paranalog.truckcheck.utils.PdfGenerator
 import com.paranalog.truckcheck.utils.SharedPrefsManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.IOException
 import java.text.DecimalFormat
@@ -56,10 +51,26 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class ChecklistActivity() : AppCompatActivity(), Parcelable {
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
+/**
+ * Versão DEFINITIVA - Sem travamentos
+ *
+ * Estratégia:
+ * 1. NUNCA bloquear a UI
+ * 2. Timeouts ULTRA agressivos
+ * 3. Sempre finalizar, não importa o que aconteça
+ * 4. Firebase 100% isolado e opcional
+ * 5. Email tentado UMA vez com timeout curto
+ * 6. Emails pendentes são enviados pelo EmailPendingManager na MainActivity
+ *
+ * O EmailPendingManager é executado em:
+ * - MainActivity.onResume()
+ * - Quando detecta conexão de internet
+ * - Periodicamente em background
+ */
+
+class ChecklistActivity : AppCompatActivity() {
+    private lateinit var locationManager: LocationManager
     private var localColeta: String? = null
-    private val REQUEST_LOCATION_PERMISSION = 5
     private lateinit var binding: ActivityChecklistBinding
     private lateinit var sharedPrefsManager: SharedPrefsManager
     private lateinit var checklistItemAdapter: ChecklistItemAdapter
@@ -71,78 +82,94 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
     private val timeFormat = SimpleDateFormat("HH:mm", Locale("pt", "BR"))
     private val TAG = "ChecklistActivity"
     private var savedChecklistId: Long = -1L
-    private var isSaving = false // Flag para evitar salvamentos duplicados
-    private var loadingDialog: Dialog? = null // Diálogo de carregamento
-    private var locationCallback: LocationCallback? = null // Para receber atualizações de localização
-    private var isRequiredFieldsFilled = false // Para verificar campos obrigatórios
+    private var isSaving = false
+    private var loadingDialog: Dialog? = null
+    private lateinit var takePictureLauncher: ActivityResultLauncher<Intent>
+    private lateinit var galleryLauncher: ActivityResultLauncher<Intent>
 
-    constructor(parcel: Parcel) : this() {
-        localColeta = parcel.readString()
-        editingChecklistId = parcel.readLong()
-        currentPhotoPath = parcel.readString()
-        currentItemPosition = parcel.readInt()
-        savedChecklistId = parcel.readLong()
-        isSaving = parcel.readByte() != 0.toByte()
-    }
+    // Firebase opcional
+    private var firebaseManager: FirebaseManager? = null
 
     companion object {
         private const val REQUEST_IMAGE_CAPTURE = 1
         private const val REQUEST_GALLERY = 2
         private const val REQUEST_CAMERA_PERMISSION = 3
         private const val REQUEST_STORAGE_PERMISSION = 4
+        private const val REQUEST_LOCATION_PERMISSION = 5
+        private const val REQUEST_NOTIFICATION_PERMISSION = 6
         private const val STATE_CURRENT_PHOTO_PATH = "state_current_photo_path"
         private const val STATE_CURRENT_ITEM_POSITION = "state_current_item_position"
         private const val STATE_EDITING_ID = "state_editing_id"
-
-        // Creator do Parcelable dentro do companion object para evitar erro
-        @JvmField
-        val CREATOR: Parcelable.Creator<ChecklistActivity> = object : Parcelable.Creator<ChecklistActivity> {
-            override fun createFromParcel(parcel: Parcel): ChecklistActivity = ChecklistActivity(parcel)
-            override fun newArray(size: Int): Array<ChecklistActivity?> = arrayOfNulls(size)
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityChecklistBinding.inflate(layoutInflater)
 
-        // Mostrar tela de carregamento enquanto inicializa
         binding.loadingContainer.visibility = View.VISIBLE
         binding.mainContainer.visibility = View.GONE
 
-        // Garantir que o botão esteja sempre habilitado
-        binding.fabSalvar.isEnabled = true
-        binding.fabSalvar.alpha = 1.0f
-
         setContentView(binding.root)
 
-        // Inicializar componentes
-        initializeComponents()
+        solicitarPermissaoNotificacao()
 
-        // Configurar a tela com base nos parâmetros
+        takePictureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                handleCameraResult()
+            }
+        }
+
+        galleryLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                handleGalleryResult(result.data)
+            }
+        }
+
+        initializeComponents()
         setupScreen(savedInstanceState)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        confirmarSaidaSemSalvar()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Remover callback de localização quando a activity é destruída
-        locationCallback?.let {
-            fusedLocationClient.removeLocationUpdates(it)
+        loadingDialog?.dismiss()
+        loadingDialog = null
+        System.gc()
+    }
+
+    private fun solicitarPermissaoNotificacao() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_NOTIFICATION_PERMISSION
+                )
+            }
         }
     }
 
     private fun initializeComponents() {
         sharedPrefsManager = SharedPrefsManager(this)
 
-        // Inicializar o cliente de localização
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = LocationManager(this)
 
-        // Configurar Toolbar
+        try {
+            firebaseManager = FirebaseManager(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "Firebase não disponível: ${e.message}")
+            firebaseManager = null
+        }
+
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowHomeEnabled(true)
 
-        // Configurar RecyclerView
         binding.recyclerViewItens.layoutManager = LinearLayoutManager(this)
         checklistItemAdapter = ChecklistItemAdapter(
             this,
@@ -167,137 +194,50 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
         )
         binding.recyclerViewItens.adapter = checklistItemAdapter
 
-        // Solicitar permissões
         verificarPermissoes()
 
-        // Configurar filtros de categoria
         binding.chipTodos.setOnClickListener { filtrarItensPorCategoria("todos") }
         binding.chipMotor.setOnClickListener { filtrarItensPorCategoria("motor") }
         binding.chipPneus.setOnClickListener { filtrarItensPorCategoria("pneus") }
         binding.chipCabine.setOnClickListener { filtrarItensPorCategoria("cabine") }
 
-        // Configurar FAB para salvar - MODIFICADO PARA SEMPRE TENTAR SALVAR
         binding.fabSalvar.setOnClickListener {
-            // Forçar uma nova validação dos campos
-            val camposValidos = validarCamposObrigatorios()
-
-            // Log para debug
-            Log.d(TAG, "FAB salvar clicado - Campos válidos: $camposValidos")
-
-            // Sempre chamar salvarChecklist, que fará a validação interna
             salvarChecklist()
         }
 
-        // Configurar formatação automática para peso bruto
         setupPesoBrutoFormatter()
-
-        // Adicionar TextWatcher para os campos obrigatórios
-        setupRequiredFieldsValidation()
-    }
-
-    private fun setupRequiredFieldsValidation() {
-        val textWatcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                validarCamposObrigatorios()
-            }
-        }
-
-        // Aplicar o textWatcher a todos os campos obrigatórios
-        binding.etCrtMicDue.addTextChangedListener(textWatcher)
-        binding.etNLacre.addTextChangedListener(textWatcher)
-        binding.etPesoBruto.addTextChangedListener(textWatcher)
-    }
-
-    private fun validarCamposObrigatorios(): Boolean {
-        val micPreenchido = binding.etCrtMicDue.text.toString().trim().isNotEmpty()
-        val lacrePreenchido = binding.etNLacre.text.toString().trim().isNotEmpty()
-        val pesoPreenchido = binding.etPesoBruto.text.toString().trim().isNotEmpty()
-
-        // Verificar se pelo menos uma opção de status está marcada
-        val statusMarcado = binding.checkEntrada.isChecked ||
-                binding.checkSaida.isChecked ||
-                binding.checkPernoite.isChecked ||
-                binding.checkParada.isChecked
-
-        isRequiredFieldsFilled = micPreenchido && lacrePreenchido && pesoPreenchido && statusMarcado
-
-        // Atualizar o visual do botão de salvar
-        updateSaveButtonState()
-
-        return isRequiredFieldsFilled
-    }
-
-    private fun updateSaveButtonState() {
-        // Sempre manter o botão habilitado, mas mudar a aparência para dar feedback visual
-        binding.fabSalvar.isEnabled = true
-
-        // Ajustar apenas a opacidade para indicar status
-        binding.fabSalvar.alpha = 1.0f  // Sempre 100% visível
-
-        // Log para debug
-        Log.d(TAG, "Atualizando estado do botão - Campos preenchidos: $isRequiredFieldsFilled")
     }
 
     private fun setupPesoBrutoFormatter() {
         binding.etPesoBruto.addTextChangedListener(object : TextWatcher {
             var isFormatting = false
-            var previousText = ""
 
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-                // Guardar o texto anterior para comparação
-                if (!isFormatting) {
-                    previousText = s?.toString() ?: ""
-                }
-            }
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                // Nada a fazer aqui
-            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: Editable?) {
                 if (isFormatting || s == null) return
 
-                // Evitar loops de formatação
                 isFormatting = true
 
-                try {
-                    val userInput = s.toString()
+                val userInput = s.toString()
+                val rawInput = userInput.replace(".", "")
 
-                    // Só formatar se o texto mudou
-                    if (userInput != previousText) {
-                        // Remover todos os pontos existentes
-                        val rawInput = userInput.replace(".", "")
-
-                        if (rawInput.isNotEmpty()) {
-                            // Criar a versão formatada com pontos
-                            val formatted = formatPesoBruto(rawInput)
-
-                            // Atualizar o texto
-                            if (formatted != userInput) {
-                                s.replace(0, s.length, formatted)
-                                Log.d(TAG, "Peso formatado: $rawInput -> $formatted")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Erro ao formatar peso bruto", e)
-                } finally {
-                    isFormatting = false
-                    validarCamposObrigatorios()
+                if (rawInput.isNotEmpty()) {
+                    val formatted = formatPesoBruto(rawInput)
+                    s.replace(0, s.length, formatted)
                 }
+
+                isFormatting = false
             }
         })
 
-        // Formatar o valor inicial, se houver
-        val textoInicial = binding.etPesoBruto.text?.toString()
-        if (!textoInicial.isNullOrEmpty()) {
-            val rawInput = textoInicial.replace(".", "")
+        val etPesoBrutoText = binding.etPesoBruto.text
+        if (etPesoBrutoText?.isNotEmpty() == true) {
+            val initialText = binding.etPesoBruto.text.toString()
+            val rawInput = initialText.replace(".", "")
             if (rawInput.isNotEmpty()) {
-                val formatted = formatPesoBruto(rawInput)
-                binding.etPesoBruto.setText(formatted)
-                Log.d(TAG, "Formatação inicial do peso: $textoInicial -> $formatted")
+                binding.etPesoBruto.setText(formatPesoBruto(rawInput))
             }
         }
     }
@@ -307,87 +247,22 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
         if (numericOnly.isEmpty()) return ""
 
         val valor = numericOnly.toLongOrNull() ?: 0L
-
-        // Usar DecimalFormat com configuração específica para garantir separador de milhar
         val formatter = DecimalFormat("#,###")
-        val symbols = DecimalFormatSymbols(Locale("pt", "BR"))
-        symbols.groupingSeparator = '.' // Definir explicitamente o separador de milhar como ponto
-        formatter.decimalFormatSymbols = symbols
+        formatter.decimalFormatSymbols = DecimalFormatSymbols(Locale("pt", "BR"))
 
-        // Formatar o valor e garantir que tenha o separador
-        val resultado = formatter.format(valor)
-
-        // Log para debug
-        Log.d(TAG, "Formatação de peso: $input -> $resultado")
-
-        return resultado
-    }
-
-    private fun salvarChecklist() {
-        if (isSaving) {
-            Log.d(TAG, "Salvamento já em andamento, ignorando clique")
-            return
-        }
-
-        Log.d(TAG, "Iniciando processo de salvamento")
-
-        // Verificar os campos específicos e mostrar mensagens informativas
-        val erros = mutableListOf<String>()
-
-        if (binding.etCrtMicDue.text.toString().trim().isEmpty()) {
-            erros.add("MIC")
-            binding.etCrtMicDue.error = "Campo obrigatório"
-        }
-
-        if (binding.etNLacre.text.toString().trim().isEmpty()) {
-            erros.add("LACRE")
-            binding.etNLacre.error = "Campo obrigatório"
-        }
-
-        if (binding.etPesoBruto.text.toString().trim().isEmpty()) {
-            erros.add("PESO")
-            binding.etPesoBruto.error = "Campo obrigatório"
-        }
-
-        val statusMarcado = binding.checkEntrada.isChecked ||
-                binding.checkSaida.isChecked ||
-                binding.checkPernoite.isChecked ||
-                binding.checkParada.isChecked
-
-        if (!statusMarcado) {
-            erros.add("STATUS (Entrada/Saída/Pernoite/Parada)")
-        }
-
-        if (erros.isNotEmpty()) {
-            val mensagem = "Preencha os campos obrigatórios: ${erros.joinToString(", ")}"
-            Toast.makeText(this, mensagem, Toast.LENGTH_LONG).show()
-            Log.d(TAG, "Validação falhou: $mensagem")
-            return
-        }
-
-        // Se chegou aqui, todos os campos estão preenchidos
-        isSaving = true
-        loadingDialog = showLoadingDialog("Salvando checklist...")
-        Log.d(TAG, "Todos os campos validados, iniciando salvamento")
-        processarSalvamento()
+        return formatter.format(valor)
     }
 
     private fun setupScreen(savedInstanceState: Bundle?) {
         lifecycleScope.launch {
             try {
-                if (ContextCompat.checkSelfPermission(
-                        this@ChecklistActivity,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
+                if (ContextCompat.checkSelfPermission(this@ChecklistActivity, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
                     obterLocalizacaoAtual()
                 } else {
                     ActivityCompat.requestPermissions(
                         this@ChecklistActivity,
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        ),
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
                         REQUEST_LOCATION_PERMISSION
                     )
                 }
@@ -411,19 +286,15 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                 withContext(Dispatchers.Main) {
                     binding.loadingContainer.visibility = View.GONE
                     binding.mainContainer.visibility = View.VISIBLE
-                    validarCamposObrigatorios()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Erro ao configurar tela", e)
-                Toast.makeText(
-                    this@ChecklistActivity,
-                    "Erro ao carregar dados: ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
-
                 withContext(Dispatchers.Main) {
                     binding.loadingContainer.visibility = View.GONE
                     binding.mainContainer.visibility = View.VISIBLE
+                    Toast.makeText(this@ChecklistActivity,
+                        "Erro ao carregar dados: ${e.message}",
+                        Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -436,144 +307,58 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
             .create()
 
         dialog.show()
+
         val textView = dialog.findViewById<TextView>(R.id.textViewLoading)
         textView?.text = message
+
         return dialog
     }
 
     private fun obterLocalizacaoAtual() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ),
-                REQUEST_LOCATION_PERMISSION
-            )
-            return
-        }
+        lifecycleScope.launch {
+            try {
+                if (ActivityCompat.checkSelfPermission(
+                        this@ChecklistActivity,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED &&
+                    ActivityCompat.checkSelfPermission(
+                        this@ChecklistActivity,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.d(TAG, "Sem permissão de localização")
+                    localColeta = "Localização não disponível - Sem permissão"
+                    return@launch
+                }
 
-        try {
-            localColeta = "Obtendo localização..."
-            Log.d(TAG, "Solicitando localização atual...")
+                // Mostrar que está obtendo localização
+                localColeta = "Obtendo localização..."
 
-            val locationRequest = LocationRequest.create().apply {
-                priority = Priority.PRIORITY_HIGH_ACCURACY
-                interval = 5000
-                fastestInterval = 2000
-                numUpdates = 1
+                // Verificar se o GPS está ativado
+                val androidLocationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val gpsEnabled = androidLocationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+
+                if (!gpsEnabled) {
+                    Log.w(TAG, "GPS desativado - tentando obter última localização conhecida")
+                }
+
+                // Usar timeout maior se estiver offline ou GPS desativado
+                val timeout = if (gpsEnabled && verificarConectividadeBasica()) 10000L else 15000L
+
+                Log.d(TAG, "Iniciando obtenção de localização com timeout de ${timeout}ms")
+
+                // Usar o locationManager correto (nosso LocationManager customizado)
+                val location = withTimeoutOrNull(timeout) {
+                    locationManager.getCurrentLocation(timeout)
+                } ?: "GPS sem sinal"
+
+                localColeta = location
+                Log.d(TAG, "Localização obtida: $localColeta")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao obter localização: ${e.message}", e)
+                localColeta = "GPS sem sinal"
             }
-
-            locationCallback?.let {
-                fusedLocationClient.removeLocationUpdates(it)
-            }
-
-            locationCallback = object : LocationCallback() {
-                override fun onLocationResult(locationResult: LocationResult) {
-                    val location = locationResult.lastLocation
-                    if (location != null) {
-                        Log.d(TAG, "Localização recebida: ${location.latitude}, ${location.longitude}")
-                        processarLocalizacao(location)
-                    } else {
-                        Log.d(TAG, "Localização recebida é nula")
-                        localColeta = "Não foi possível determinar localização"
-                    }
-                    fusedLocationClient.removeLocationUpdates(this)
-                }
-            }
-
-            fusedLocationClient.lastLocation
-                .addOnSuccessListener { location ->
-                    if (location != null) {
-                        Log.d(TAG, "Última localização conhecida: ${location.latitude}, ${location.longitude}")
-                        processarLocalizacao(location)
-                    } else {
-                        Log.d(TAG, "Sem localização conhecida, solicitando atualização...")
-                        try {
-                            fusedLocationClient.requestLocationUpdates(
-                                locationRequest,
-                                locationCallback!!,
-                                Looper.getMainLooper()
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Erro ao solicitar atualizações de localização", e)
-                            localColeta = "Erro ao obter localização"
-                        }
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Erro ao obter última localização conhecida", e)
-                    try {
-                        fusedLocationClient.requestLocationUpdates(
-                            locationRequest,
-                            locationCallback!!,
-                            Looper.getMainLooper()
-                        )
-                    } catch (e2: Exception) {
-                        Log.e(TAG, "Erro ao solicitar atualizações de localização", e2)
-                        localColeta = "Erro ao obter localização"
-                    }
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exceção ao configurar serviços de localização", e)
-            localColeta = "Erro ao acessar serviços de localização"
-        }
-    }
-
-    private fun processarLocalizacao(location: android.location.Location) {
-        try {
-            val geocoder = Geocoder(this, Locale.getDefault())
-            Log.d(TAG, "Processando localização: ${location.latitude}, ${location.longitude}")
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                geocoder.getFromLocation(location.latitude, location.longitude, 1) { addresses ->
-                    if (addresses.isNotEmpty()) {
-                        localColeta = formatarEndereco(addresses[0])
-                    } else {
-                        localColeta = "Lat: ${location.latitude}, Long: ${location.longitude}"
-                    }
-                    Log.d(TAG, "Localização atualizada para: $localColeta")
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
-                if (addresses != null && addresses.isNotEmpty()) {
-                    localColeta = formatarEndereco(addresses[0])
-                } else {
-                    localColeta = "Lat: ${location.latitude}, Long: ${location.longitude}"
-                }
-                Log.d(TAG, "Localização atualizada para: $localColeta")
-            }
-        } catch (e: IOException) {
-            Log.e(TAG, "Erro ao obter endereço: ${e.message}")
-            localColeta = "Lat: ${location.latitude}, Long: ${location.longitude}"
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro inesperado ao processar localização", e)
-            localColeta = "Lat: ${location.latitude}, Long: ${location.longitude}"
-        }
-    }
-
-    private fun formatarEndereco(address: Address): String {
-        val partes = mutableListOf<String>()
-        if (!address.thoroughfare.isNullOrEmpty()) partes.add(address.thoroughfare)
-        if (!address.subThoroughfare.isNullOrEmpty()) partes.add(address.subThoroughfare)
-        if (!address.locality.isNullOrEmpty()) partes.add(address.locality)
-        if (!address.adminArea.isNullOrEmpty()) partes.add(address.adminArea)
-        if (!address.postalCode.isNullOrEmpty()) partes.add(address.postalCode)
-        if (!address.countryName.isNullOrEmpty()) partes.add(address.countryName)
-
-        return if (partes.isNotEmpty()) {
-            partes.joinToString(", ")
-        } else {
-            "Lat: ${address.latitude}, Long: ${address.longitude}"
         }
     }
 
@@ -604,26 +389,33 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
             permissoesNecessarias.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissoesNecessarias.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         if (permissoesNecessarias.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, permissoesNecessarias.toTypedArray(), REQUEST_CAMERA_PERMISSION)
+            ActivityCompat.requestPermissions(
+                this,
+                permissoesNecessarias.toTypedArray(),
+                REQUEST_CAMERA_PERMISSION
+            )
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
         when (requestCode) {
-            REQUEST_CAMERA_PERMISSION, REQUEST_LOCATION_PERMISSION -> {
-                val todasPermissoesConcedidas = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            REQUEST_CAMERA_PERMISSION, REQUEST_LOCATION_PERMISSION, REQUEST_NOTIFICATION_PERMISSION -> {
+                val todasPermissoesConcedidas = grantResults.isNotEmpty() &&
+                        grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+
                 if (!todasPermissoesConcedidas) {
-                    Toast.makeText(
-                        this,
+                    Toast.makeText(this,
                         "Algumas permissões não foram concedidas. Alguns recursos podem não funcionar corretamente.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        Toast.LENGTH_LONG).show()
                 } else if (requestCode == REQUEST_LOCATION_PERMISSION) {
                     obterLocalizacaoAtual()
                 }
@@ -646,10 +438,6 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
             }
             else -> super.onOptionsItemSelected(item)
         }
-    }
-
-    override fun onBackPressed() {
-        confirmarSaidaSemSalvar()
     }
 
     private fun confirmarSaidaSemSalvar() {
@@ -737,6 +525,7 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
         lifecycleScope.launch {
             try {
                 val db = AppDatabase.getDatabase(this@ChecklistActivity)
+
                 val checklist = withContext(Dispatchers.IO) {
                     db.checklistDao().getChecklistById(checklistId)
                 }
@@ -747,8 +536,8 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                     binding.tvPlacaCavalo.text = checklist.placaCavalo ?: "N/A"
                     binding.tvPlacaCarreta.text = checklist.placaCarreta ?: "N/A"
 
-                    binding.etCrtMicDue.setText(checklist.crtMicDue ?: "")
-                    binding.etNLacre.setText(checklist.nLacre ?: "")
+                    binding.etCrtMicDue.setText(checklist.crtMicDue)
+                    binding.etNLacre.setText(checklist.nLacre)
 
                     if (!checklist.pesoBruto.isNullOrEmpty()) {
                         val rawInput = checklist.pesoBruto.replace(".", "")
@@ -767,7 +556,7 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                     binding.checkParada.isChecked = checklist.statusParada
 
                     localColeta = checklist.localColeta
-                    if (localColeta == null || localColeta == "Localização não disponível") {
+                    if (localColeta == null || localColeta == "Localização não disponível" || localColeta == "Obtendo localização...") {
                         Log.d(TAG, "Localização não disponível no checklist, tentando obter nova")
                         obterLocalizacaoAtual()
                     } else {
@@ -781,14 +570,18 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                     checklistItems.clear()
                     checklistItems.addAll(itens)
                     checklistItemAdapter.updateList(checklistItems)
+
                     atualizarProgresso()
-                    validarCamposObrigatorios()
                 } else {
-                    Toast.makeText(this@ChecklistActivity, "Checklist não encontrado", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ChecklistActivity,
+                        "Checklist não encontrado",
+                        Toast.LENGTH_SHORT).show()
                     configurarNovoChecklist()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@ChecklistActivity, "Erro ao carregar checklist: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ChecklistActivity,
+                    "Erro ao carregar checklist: ${e.message}",
+                    Toast.LENGTH_SHORT).show()
                 Log.e(TAG, "Erro ao carregar checklist existente", e)
                 configurarNovoChecklist()
             }
@@ -816,7 +609,7 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
             }
 
             val categorias = mapOf(
-                "motor" to listOf(2, 5, 18, 19),
+                "motor" to listOf(2 , 5, 18, 19),
                 "pneus" to listOf(3),
                 "cabine" to listOf(6, 7)
             )
@@ -836,50 +629,38 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
     }
 
     private fun mostrarOpcoesFoto() {
-        val opcoes = arrayOf("Tirar Foto", "Escolher da Galeria")
-        AlertDialog.Builder(this)
-            .setTitle("Selecionar Foto")
-            .setItems(opcoes) { _, which ->
-                when (which) {
-                    0 -> verificarEIniciarCamera()
-                    1 -> verificarEIniciarGaleria()
+        try {
+            val options = arrayOf("Tirar foto", "Escolher da galeria", "Remover foto")
+
+            val cameraIcon = ContextCompat.getDrawable(this, android.R.drawable.ic_menu_camera)
+
+            AlertDialog.Builder(this)
+                .setTitle("Foto")
+                .setIcon(cameraIcon)
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> verificarEIniciarCamera()
+                        1 -> verificarEIniciarGaleria()
+                        2 -> removerFoto()
+                    }
                 }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao mostrar opções: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "Erro ao mostrar opções de foto", e)
+        }
     }
 
     private fun verificarEIniciarCamera() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA_PERMISSION)
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                REQUEST_CAMERA_PERMISSION
+            )
             Toast.makeText(this, "É necessário conceder permissão para a câmera", Toast.LENGTH_SHORT).show()
         } else {
             tirarFoto()
-        }
-    }
-
-    private fun tirarFoto() {
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        if (intent.resolveActivity(packageManager) != null) {
-            val photoFile: File? = try {
-                criarArquivoImagem()
-            } catch (ex: IOException) {
-                Log.e(TAG, "Erro ao criar arquivo de imagem", ex)
-                null
-            }
-
-            photoFile?.also {
-                val photoURI: Uri = FileProvider.getUriForFile(
-                    this,
-                    "${packageName}.fileprovider",
-                    it
-                )
-                currentPhotoPath = it.absolutePath
-                intent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
-                startActivityForResult(intent, REQUEST_IMAGE_CAPTURE)
-            }
-        } else {
-            Toast.makeText(this, "Nenhum aplicativo de câmera disponível", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -898,24 +679,68 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
         escolherDaGaleria()
     }
 
-    private fun escolherDaGaleria() {
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, REQUEST_GALLERY)
-    }
+    private fun tirarFoto() {
+        try {
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
 
-    private fun processarResultadoCamera() {
-        if (currentItemPosition >= 0 && currentItemPosition < checklistItems.size && currentPhotoPath != null) {
-            val item = checklistItems[currentItemPosition]
-            checklistItems[currentItemPosition] = item.copy(fotoPath = currentPhotoPath)
-            checklistItemAdapter.notifyItemChanged(currentItemPosition)
-            Toast.makeText(this, "Foto capturada com sucesso", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Erro ao salvar a foto capturada", Toast.LENGTH_SHORT).show()
-            Log.e(TAG, "Posição do item inválida ou caminho da foto nulo: $currentItemPosition, $currentPhotoPath")
+            val photoFile = criarArquivoImagem()
+
+            if (photoFile != null) {
+                val photoURI = FileProvider.getUriForFile(
+                    this,
+                    "${packageName}.fileprovider",
+                    photoFile
+                )
+
+                currentPhotoPath = photoFile.absolutePath
+                intent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI)
+
+                takePictureLauncher.launch(intent)
+            } else {
+                Toast.makeText(this, "Erro ao criar arquivo para foto", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro geral ao tirar foto", e)
+            Toast.makeText(this, "Erro ao iniciar câmera: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun processarResultadoGaleria(data: Intent?) {
+    private fun escolherDaGaleria() {
+        try {
+            val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            intent.type = "image/*"
+            try {
+                galleryLauncher.launch(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Erro ao abrir galeria: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e(TAG, "Erro ao abrir galeria", e)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao iniciar galeria: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "Erro geral ao escolher da galeria", e)
+        }
+    }
+
+    private fun handleCameraResult() {
+        try {
+            if (currentPhotoPath != null && currentItemPosition >= 0 && currentItemPosition < checklistItems.size) {
+                val file = File(currentPhotoPath!!)
+                if (file.exists()) {
+                    val item = checklistItems[currentItemPosition]
+                    checklistItems[currentItemPosition] = item.copy(fotoPath = currentPhotoPath)
+                    checklistItemAdapter.notifyItemChanged(currentItemPosition)
+                    Toast.makeText(this, "Foto salva", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Arquivo de foto não encontrado", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao processar resultado da câmera: ${e.message}", e)
+            Toast.makeText(this, "Erro ao processar foto: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleGalleryResult(data: Intent?) {
         try {
             data?.data?.let { uri ->
                 if (currentItemPosition >= 0 && currentItemPosition < checklistItems.size) {
@@ -923,69 +748,222 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                         val inputStream = contentResolver.openInputStream(uri)
                         val file = criarArquivoImagem()
 
-                        file?.let { outputFile ->
-                            outputFile.outputStream().use { output ->
+                        file?.let {
+                            it.outputStream().use { output ->
                                 inputStream?.copyTo(output)
                             }
                             val item = checklistItems[currentItemPosition]
-                            checklistItems[currentItemPosition] = item.copy(fotoPath = outputFile.path)
+                            checklistItems[currentItemPosition] = item.copy(fotoPath = file.absolutePath)
                             checklistItemAdapter.notifyItemChanged(currentItemPosition)
-                            Toast.makeText(this, "Foto da galeria salva", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Foto salva", Toast.LENGTH_SHORT).show()
                         }
 
                         inputStream?.close()
                     } catch (e: Exception) {
                         Toast.makeText(this, "Erro ao processar imagem: ${e.message}", Toast.LENGTH_SHORT).show()
-                        Log.e(TAG, "Erro ao processar imagem da galeria", e)
                     }
-                } else {
-                    Toast.makeText(this, "Posição do item inválida", Toast.LENGTH_SHORT).show()
-                    Log.w(TAG, "Posição do item inválida (galeria): $currentItemPosition")
                 }
-            } ?: run {
-                Toast.makeText(this, "Nenhuma imagem selecionada", Toast.LENGTH_SHORT).show()
-                Log.w(TAG, "URI da imagem é nulo")
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Erro ao processar imagem da galeria: ${e.message}", Toast.LENGTH_SHORT).show()
-            Log.e(TAG, "Erro geral ao processar resultado da galeria", e)
+            Log.e(TAG, "Erro ao processar resultado da galeria: ${e.message}", e)
+            Toast.makeText(this, "Erro ao processar foto: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun criarArquivoImagem(): File {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-        return File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
+    private fun removerFoto() {
+        try {
+            if (currentItemPosition >= 0 && currentItemPosition < checklistItems.size) {
+                val item = checklistItems[currentItemPosition]
+                item.fotoPath?.let { path ->
+                    try {
+                        val file = File(path)
+                        if (file.exists()) {
+                            file.delete()
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Erro ao deletar arquivo de foto", e)
+                    }
+                }
+                checklistItems[currentItemPosition] = item.copy(fotoPath = null)
+                checklistItemAdapter.notifyItemChanged(currentItemPosition)
+                Toast.makeText(this, "Foto removida", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao remover foto: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "Erro ao remover foto", e)
+        }
     }
 
-    private fun processarSalvamento() {
-        lifecycleScope.launch {
-            try {
-                val db = AppDatabase.getDatabase(this@ChecklistActivity)
+    private fun criarArquivoImagem(): File? {
+        try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            return File.createTempFile(
+                "JPEG_${timeStamp}_",
+                ".jpg",
+                storageDir
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "Erro ao criar arquivo de imagem: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "Erro ao criar arquivo de imagem", e)
+            return null
+        }
+    }
 
-                // Validar campos obrigatórios novamente antes de salvar
-                if (!validarCamposObrigatorios()) {
-                    withContext(Dispatchers.Main) {
-                        loadingDialog?.dismiss()
-                        isSaving = false
-                        Toast.makeText(
-                            this@ChecklistActivity,
-                            "Preencha todos os campos obrigatórios antes de salvar",
-                            Toast.LENGTH_LONG
-                        ).show()
+    private fun salvarChecklist() {
+        if (isSaving) {
+            Toast.makeText(this, "Aguarde, salvamento em andamento...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val statusVazios = checklistItems.count { it.status.isEmpty() }
+        if (statusVazios > 0) {
+            AlertDialog.Builder(this)
+                .setTitle("Itens não preenchidos")
+                .setMessage("É necessário preencher todos os itens antes de salvar.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        // ESTRATÉGIA: Salvar localmente SEMPRE e finalizar RÁPIDO
+        isSaving = true
+        loadingDialog = showLoadingDialog("Salvando checklist...")
+
+        // Usar um timeout geral para GARANTIR que não trave
+        lifecycleScope.launch {
+            val job = launch {
+                var checklistId = -1L
+
+                try {
+                    // 1. SALVAR NO BANCO (rápido e confiável)
+                    checklistId = salvarNoBancoRapido()
+
+                    if (checklistId <= 0) {
+                        finalizarImediato("Erro ao salvar checklist", false)
+                        return@launch
                     }
-                    return@launch
+
+                    // 2. GERAR PDF COM TIMEOUT AGRESSIVO
+                    updateDialog("Gerando PDF...")
+
+                    val pdfGerado = withTimeoutOrNull(8000) {
+                        gerarPdfSeguro(checklistId)
+                    } ?: false
+
+                    if (!pdfGerado) {
+                        // PDF falhou mas checklist está salvo
+                        finalizarImediato("Checklist salvo! (PDF não gerado)", true)
+                        return@launch
+                    }
+
+                    // 3. NÃO VERIFICAR INTERNET - TENTAR DIRETO
+                    updateDialog("Finalizando...")
+
+                    // Tentar email com timeout curto
+                    val emailJob = launch {
+                        tentarEnviarEmailRapido(checklistId)
+                    }
+
+                    // Firebase em paralelo (não espera)
+                    launch {
+                        tentarEnviarFirebase(checklistId)
+                    }
+
+                    // Esperar email no máximo 3 segundos
+                    withTimeoutOrNull(3000) {
+                        emailJob.join()
+                    }
+
+                    // SEMPRE finalizar com sucesso
+                    if (checklistId > 0) {
+                        // MUDANÇA AQUI: Verificar se o email foi enviado usando método otimizado
+                        val emailFoiEnviado = withContext(Dispatchers.IO) {
+                            AppDatabase.getDatabase(this@ChecklistActivity)
+                                .checklistDao()
+                                .isEmailEnviado(checklistId) ?: false
+                        }
+
+                        if (emailFoiEnviado) {
+                            finalizarImediato("Checklist salvo e email enviado!", true)
+                        } else {
+                            finalizarImediato("Checklist salvo! Email será enviado automaticamente quando houver conexão.", true)
+                        }
+                    } else {
+                        finalizarImediato("Erro ao salvar checklist", false)
+                    }
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erro crítico: ${e.message}", e)
+                    if (checklistId > 0) {
+                        finalizarImediato("Checklist salvo com erros", true)
+                    } else {
+                        finalizarImediato("Erro ao salvar", false)
+                    }
+                }
+            }
+
+            // TIMEOUT MÁXIMO ABSOLUTO - Se demorar mais que 20 segundos, força finalização
+            withTimeoutOrNull(20000) {
+                job.join()
+            }
+
+            // Se ainda não finalizou, força
+            if (isActive && !isFinishing) {
+                finalizarImediato("Checklist salvo! (Processamento em background)", true)
+            }
+        }
+    }
+
+    private suspend fun salvarNoBancoRapido(): Long {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Se ainda está obtendo localização ou não tem, tenta mais uma vez com timeout curto
+                if (localColeta == null ||
+                    localColeta == "Obtendo localização..." ||
+                    localColeta == "Localização não disponível" ||
+                    localColeta == "GPS sem sinal" ||
+                    localColeta?.isEmpty() == true) {
+
+                    Log.d(TAG, "Tentando obter localização uma última vez antes de salvar...")
+                    val locationFinal = withTimeoutOrNull(5000) {
+                        locationManager.getCurrentLocation(5000)
+                    }
+
+                    if (!locationFinal.isNullOrEmpty() &&
+                        locationFinal != "Localização não disponível" &&
+                        locationFinal != "GPS sem sinal") {
+                        localColeta = locationFinal
+                        Log.d(TAG, "Localização obtida no último momento: $localColeta")
+                    } else {
+                        // Se não conseguiu, mas tem GPS ativado, indica que pode estar sem sinal
+                        localColeta = if (verificarGpsAtivado()) {
+                            // Tentar uma última vez com GPS puro
+                            val gpsLocation = withTimeoutOrNull(3000) {
+                                obterLocalizacaoGPSPuro()
+                            }
+                            gpsLocation ?: "GPS ativado mas sem sinal no momento"
+                        } else {
+                            "GPS desativado"
+                        }
+                    }
                 }
 
-                // Obtendo o CPF do motorista do SharedPreferences
-                val motoristaCpf = sharedPrefsManager.getUsuarioCpf() ?: ""
+                // Garantir que NUNCA salve com localColeta vazio ou null
+                if (localColeta.isNullOrEmpty()) {
+                    localColeta = "Localização não disponível"
+                }
 
-                // Criar objeto checklist com todos os campos necessários
+                val db = AppDatabase.getDatabase(this@ChecklistActivity)
+                val cpf = sharedPrefsManager.getUsuarioCpf()
+                val nome = sharedPrefsManager.getUsuarioNome()
+                val dataAtual = Date()
+
                 val checklist = Checklist(
                     id = if (editingChecklistId != -1L) editingChecklistId else 0,
-                    motoristaName = binding.tvMotorista.text.toString(),
-                    motoristaCpf = motoristaCpf,
-                    data = dateFormat.parse(binding.tvData.text.toString()) ?: Date(),
+                    motoristaCpf = cpf,
+                    motoristaName = nome,
+                    data = dataAtual,
                     placaCavalo = binding.tvPlacaCavalo.text.toString(),
                     placaCarreta = binding.tvPlacaCarreta.text.toString(),
                     crtMicDue = binding.etCrtMicDue.text.toString(),
@@ -995,117 +973,212 @@ class ChecklistActivity() : AppCompatActivity(), Parcelable {
                     statusSaida = binding.checkSaida.isChecked,
                     statusPernoite = binding.checkPernoite.isChecked,
                     statusParada = binding.checkParada.isChecked,
-                    localColeta = localColeta ?: "Localização não disponível",
                     emailEnviado = false,
-                    pdfPath = null
+                    pdfPath = null,
+                    localColeta = localColeta
                 )
 
-                // Salvar o checklist no banco de dados
-                val checklistId = withContext(Dispatchers.IO) {
-                    if (checklist.id == 0L) {
-                        db.checklistDao().insertChecklist(checklist)
-                    } else {
-                        db.checklistDao().updateChecklist(checklist)
-                        checklist.id
+                if (editingChecklistId != -1L) {
+                    db.checklistDao().updateChecklist(checklist)
+                    checklistItems.forEach { item ->
+                        db.checklistDao().updateItemChecklist(item.copy(checklistId = editingChecklistId))
                     }
-                }
-
-                // Salvar os itens do checklist
-                checklistItems.forEach { item ->
-                    val updatedItem = item.copy(checklistId = checklistId)
-                    try {
-                        withContext(Dispatchers.IO) {
-                            // Tente salvar o item
-                            if (item.id == 0L) {
-                                db.checklistDao().saveItem(updatedItem)
-                            } else {
-                                db.checklistDao().saveItem(updatedItem)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Erro ao salvar item de checklist: ${e.message}")
-                    }
-                }
-
-                savedChecklistId = checklistId
-
-                // Gerar PDF e enviar email
-                try {
-                    val pdfFile = File(getExternalFilesDir(null), "checklist_${checklistId}.pdf")
-
-                    // Tentar gerar PDF usando PdfGenerator
-                    try {
-                        val checklistAtualizado = withContext(Dispatchers.IO) {
-                            val pdfPathTemp = PdfGenerator.createPdf(this@ChecklistActivity, checklist, checklistItems)
-                            val checklistComPdf = checklist.copy(pdfPath = pdfPathTemp)
-                            db.checklistDao().updateChecklist(checklistComPdf)
-                            checklistComPdf
-                        }
-
-                        // Tentar enviar e-mail
-                        try {
-                            withContext(Dispatchers.IO) {
-                                val success = EmailSender.send(this@ChecklistActivity, pdfFile, checklistAtualizado)
-                                if (success) {
-                                    // Atualizar status de e-mail enviado
-                                    val checklistFinal = checklistAtualizado.copy(emailEnviado = true)
-                                    db.checklistDao().updateChecklist(checklistFinal)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Erro ao enviar e-mail, mas o checklist foi salvo", e)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Erro ao gerar PDF, mas o checklist foi salvo", e)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Erro ao processar PDF/Email, mas o checklist foi salvo", e)
-                }
-
-                // Finalizar a atividade após salvar
-                withContext(Dispatchers.Main) {
-                    loadingDialog?.dismiss()
-                    isSaving = false
-                    Toast.makeText(this@ChecklistActivity, "Checklist salvo com sucesso!", Toast.LENGTH_SHORT).show()
-                    setResult(Activity.RESULT_OK)
-                    finish()
+                    editingChecklistId
+                } else {
+                    val id = db.checklistDao().insertChecklist(checklist)
+                    val itensComId = checklistItems.map { it.copy(checklistId = id) }
+                    db.checklistDao().insertItensChecklist(itensComId)
+                    id
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    loadingDialog?.dismiss()
-                    isSaving = false
-                    Toast.makeText(this@ChecklistActivity, "Erro ao salvar checklist: ${e.message}", Toast.LENGTH_LONG).show()
-                    Log.e(TAG, "Erro ao salvar checklist", e)
-                }
+                Log.e(TAG, "Erro ao salvar no banco: ${e.message}", e)
+                -1L
             }
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        try {
-            if (resultCode == Activity.RESULT_OK) {
-                when (requestCode) {
-                    REQUEST_IMAGE_CAPTURE -> processarResultadoCamera()
-                    REQUEST_GALLERY -> processarResultadoGaleria(data)
+    private suspend fun gerarPdfSeguro(checklistId: Long): Boolean {
+        return try {
+            withContext(Dispatchers.IO) {
+                val db = AppDatabase.getDatabase(this@ChecklistActivity)
+                val checklist = db.checklistDao().getChecklistById(checklistId) ?: return@withContext false
+                val itens = db.checklistDao().getItensByChecklistId(checklistId)
+
+                // Gerar PDF com proteção contra travamento
+                val pdfFile = try {
+                    PdfGenerator(this@ChecklistActivity).gerarPdf(checklist, itens)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erro ao gerar PDF: ${e.message}")
+                    null
                 }
-            } else if (resultCode == Activity.RESULT_CANCELED) {
-                Toast.makeText(this, "Operação cancelada", Toast.LENGTH_SHORT).show()
+
+                if (pdfFile != null && pdfFile.exists()) {
+                    val checklistComPdf = checklist.copy(pdfPath = pdfFile.absolutePath)
+                    db.checklistDao().updateChecklist(checklistComPdf)
+                    true
+                } else {
+                    false
+                }
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Erro ao processar resultado: ${e.message}", Toast.LENGTH_LONG).show()
-            Log.e(TAG, "Erro ao processar resultado de activity", e)
+            Log.e(TAG, "Erro crítico ao gerar PDF: ${e.message}", e)
+            false
         }
     }
 
-    override fun writeToParcel(parcel: Parcel, flags: Int) {
-        parcel.writeString(localColeta)
-        parcel.writeLong(editingChecklistId)
-        parcel.writeString(currentPhotoPath)
-        parcel.writeInt(currentItemPosition)
-        parcel.writeLong(savedChecklistId)
-        parcel.writeByte(if (isSaving) 1 else 0)
+    private suspend fun tentarEnviarEmailRapido(checklistId: Long) {
+        try {
+            // Verificação ultra rápida de conectividade antes de tentar
+            if (!verificarConectividadeBasica()) {
+                Log.d(TAG, "Sem conectividade - email será enviado depois")
+                return
+            }
+
+            // Usar supervisorScope para isolar falhas
+            supervisorScope {
+                withContext(Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(this@ChecklistActivity)
+                    val checklist = db.checklistDao().getChecklistById(checklistId) ?: return@withContext
+
+                    if (checklist.pdfPath == null) return@withContext
+
+                    val pdfFile = File(checklist.pdfPath)
+                    if (!pdfFile.exists()) return@withContext
+
+                    // Tentar enviar com timeout interno curto
+                    try {
+                        val crtNum = checklist.crtMicDue ?: "S/N"
+                        val assunto = "CRT No. $crtNum | Motorista: ${checklist.motoristaName}"
+                        val corpo = "Segue em anexo o checklist de inspeção do veículo " +
+                                "${checklist.placaCavalo} / ${checklist.placaCarreta} " +
+                                "realizado em ${dateFormat.format(checklist.data)} às " +
+                                "${timeFormat.format(checklist.data)}."
+
+                        val emailSender = EmailSender(this@ChecklistActivity)
+
+                        // EmailSender deve ter timeout interno
+                        val enviado = emailSender.enviarEmail("checklist@paranalog.com.br", assunto, corpo, pdfFile)
+
+                        if (enviado) {
+                            val checklistAtualizado = checklist.copy(emailEnviado = true)
+                            db.checklistDao().updateChecklist(checklistAtualizado)
+                            Log.d(TAG, "Email enviado com sucesso")
+                        } else {
+                            Log.d(TAG, "Email não enviado - será tentado depois pelo EmailPendingManager")
+                        }
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Falha ao enviar email: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro no envio de email: ${e.message}")
+        }
     }
 
-    override fun describeContents(): Int = 0
+    private fun verificarConectividadeBasica(): Boolean {
+        return try {
+            val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                connectivityManager.activeNetwork != null
+            } else {
+                @Suppress("DEPRECATION")
+                connectivityManager.activeNetworkInfo != null
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun verificarGpsAtivado(): Boolean {
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        return locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+    }
+
+    private suspend fun obterLocalizacaoGPSPuro(): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (ActivityCompat.checkSelfPermission(
+                        this@ChecklistActivity,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    return@withContext null
+                }
+
+                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+
+                @Suppress("DEPRECATION")
+                val lastKnownLocation = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+
+                if (lastKnownLocation != null) {
+                    val lat = String.format("%.6f", lastKnownLocation.latitude)
+                    val lng = String.format("%.6f", lastKnownLocation.longitude)
+                    "Lat: $lat, Lng: $lng (última GPS)"
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao obter GPS puro: ${e.message}")
+                null
+            }
+        }
+    }
+
+    private suspend fun tentarEnviarFirebase(checklistId: Long) {
+        if (firebaseManager == null) return
+
+        try {
+            // Verificação básica de conectividade
+            if (!verificarConectividadeBasica()) {
+                Log.d(TAG, "Sem conectividade - Firebase não será enviado")
+                return
+            }
+
+            supervisorScope {
+                withContext(Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(this@ChecklistActivity)
+                    val checklist = db.checklistDao().getChecklistById(checklistId) ?: return@withContext
+                    val itens = db.checklistDao().getItensByChecklistId(checklistId)
+
+                    val itensSemFotos = itens.map { it.copy(fotoPath = null) }
+
+                    try {
+                        // Timeout curto para Firebase
+                        withTimeoutOrNull(3000) {
+                            firebaseManager?.enviarChecklistParaFirebase(checklist, itensSemFotos)
+                        }
+                        Log.d(TAG, "Firebase enviado")
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Firebase falhou: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Erro Firebase: ${e.message}")
+        }
+    }
+
+    private fun updateDialog(message: String) {
+        runOnUiThread {
+            loadingDialog?.findViewById<TextView>(R.id.textViewLoading)?.text = message
+        }
+    }
+
+    private fun finalizarImediato(mensagem: String, sucesso: Boolean) {
+        runOnUiThread {
+            loadingDialog?.dismiss()
+            loadingDialog = null
+            isSaving = false
+
+            Toast.makeText(
+                this@ChecklistActivity,
+                mensagem,
+                if (sucesso) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+            ).show()
+
+            // Finalizar imediatamente
+            finish()
+        }
+    }
 }

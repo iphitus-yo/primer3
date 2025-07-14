@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "323739322502",
+    "project_id": "oea-checklist-prod",
+    "storage_bucket": "oea-checklist-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:323739322502:android:91df9bbbc566bc0745a907",
+        "android_client_info": {
+          "package_name": "com.paranalog.truckcheck"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7fa4NGN8QHxWxWTOO_5_2wcqSv8dpILE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

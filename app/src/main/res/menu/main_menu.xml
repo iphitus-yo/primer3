@@ -1,13 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Botão Manual -->
+    <item
+        android:id="@+id/action_manual"
+        android:title="Manual"
+        android:icon="@android:drawable/ic_menu_help"
+        app:showAsAction="ifRoom" />
+
+    <!-- Botão Atualizar -->
     <item
         android:id="@+id/action_refresh"
-        android:icon="@drawable/ic_refresh"
         android:title="Atualizar"
+        android:icon="@android:drawable/ic_menu_rotate"
         app:showAsAction="ifRoom" />
+
+    <!-- Botão Sair -->
     <item
         android:id="@+id/action_logout"
         android:title="Sair"
         app:showAsAction="never" />
+
 </menu>

@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.paranalog.truckcheck.R
@@ -22,6 +23,7 @@ class NotificationService(private val context: Context) {
 
     companion object {
         const val CHANNEL_ID = "checklist_reminders"
+        private const val TAG = "NotificationService"
 
         // IDs das notificações
         const val NOTIFICATION_ID_MORNING = 1001
@@ -78,6 +80,9 @@ class NotificationService(private val context: Context) {
     fun scheduleNotifications(morningEnabled: Boolean, afternoonEnabled: Boolean, eveningEnabled: Boolean) {
         // Cancelar todas as notificações agendadas primeiro
         cancelAllNotifications()
+
+        // Log para debug
+        Log.d(TAG, "Agendando notificações: manhã=$morningEnabled, tarde=$afternoonEnabled, noite=$eveningEnabled")
 
         // Agendar as notificações habilitadas
         if (morningEnabled) {
@@ -136,8 +141,9 @@ class NotificationService(private val context: Context) {
             alarmManager.cancel(pendingIntentMorning)
             alarmManager.cancel(pendingIntentAfternoon)
             alarmManager.cancel(pendingIntentEvening)
+            Log.d(TAG, "Notificações anteriores canceladas")
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Erro ao cancelar notificações anteriores", e)
         }
     }
 
@@ -222,58 +228,59 @@ class NotificationService(private val context: Context) {
         }
 
         // Agendar o alarme de acordo com a versão do Android
-        when {
-            // Para Android 12+ (API 31+)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                try {
-                    // Usar alarmes inexatos que não exigem permissão especial
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                } catch (e: Exception) {
-                    // Fallback para alarmes normais se houver erro
-                    alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
+        try {
+            when {
+                // Para Android 12+ (API 31+)
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                    if (canScheduleExactAlarms()) {
+                        // Usar alarmes exatos se tiver permissão
+                        Log.d(TAG, "Agendando notificação exata para $action em ${calendar.time}")
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            calendar.timeInMillis,
+                            pendingIntent
+                        )
+                    } else {
+                        // Fallback para alarmes inexatos
+                        Log.d(TAG, "Agendando notificação inexata (sem permissão) para $action em ${calendar.time}")
+                        alarmManager.set(
+                            AlarmManager.RTC_WAKEUP,
+                            calendar.timeInMillis,
+                            pendingIntent
+                        )
+                    }
                 }
-            }
-            // Para Android 6-11
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
-                try {
+                // Para Android 6-11
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                    Log.d(TAG, "Agendando notificação com setExactAndAllowWhileIdle para $action em ${calendar.time}")
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         calendar.timeInMillis,
                         pendingIntent
                     )
-                } catch (e: Exception) {
-                    // Fallback se houver erro
-                    alarmManager.setAndAllowWhileIdle(
+                }
+                // Para versões mais antigas
+                else -> {
+                    Log.d(TAG, "Agendando notificação com setExact para $action em ${calendar.time}")
+                    alarmManager.setExact(
                         AlarmManager.RTC_WAKEUP,
                         calendar.timeInMillis,
                         pendingIntent
                     )
                 }
             }
-            // Para versões mais antigas
-            else -> {
-                try {
-                    alarmManager.setExact(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                } catch (e: Exception) {
-                    // Fallback para alarmes normais
-                    alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao agendar notificação $action", e)
+            // Fallback para alarmes normais se houver erro
+            try {
+                Log.d(TAG, "Tentando agendar notificação com método fallback para $action")
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao agendar notificação com método fallback para $action", e)
             }
         }
     }
@@ -291,6 +298,8 @@ class NotificationService(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        Log.d(TAG, "Criando notificação: ID=$notificationId, Título=$title")
+
         // Construir a notificação
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -303,6 +312,11 @@ class NotificationService(private val context: Context) {
 
         // Mostrar a notificação
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(notificationId, builder.build())
+        try {
+            notificationManager.notify(notificationId, builder.build())
+            Log.d(TAG, "Notificação exibida com sucesso: ID=$notificationId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao exibir notificação: ID=$notificationId", e)
+        }
     }
 }

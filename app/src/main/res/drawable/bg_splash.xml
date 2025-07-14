@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Fundo com gradiente -->
+    <item>
+        <shape>
+            <gradient
+                android:angle="135"
+                android:startColor="@color/blue_primary"
+                android:endColor="@color/blue_dark"
+                android:type="linear" />
+        </shape>
+    </item>
+
+    <!-- Card branco com sombra -->
+    <item android:gravity="center">
+        <shape android:shape="rectangle">
+            <corners android:radius="16dp" />
+            <solid android:color="@color/white" />
+            <size android:width="280dp" android:height="320dp" />
+        </shape>
+    </item>
+
+    <!-- Ícone de caminhão principal -->
+    <item
+        android:gravity="center_horizontal"
+        android:top="120dp"
+        android:drawable="@drawable/truck_icon_placeholder" />
+
+    <!-- Texto "TruckCheck" -->
+    <item
+        android:gravity="center_horizontal"
+        android:top="240dp"
+        android:drawable="@drawable/text_logo_placeholder" />
+
+    <!-- Texto "Checklist para Caminhoneiros" -->
+    <item
+        android:gravity="center_horizontal"
+        android:top="290dp"
+        android:drawable="@drawable/text_subtitle_placeholder" />
+
+    <!-- Indicador de carregamento -->
+    <item
+        android:gravity="center_horizontal"
+        android:top="350dp"
+        android:drawable="@drawable/loading_indicator_placeholder" />
+
+    <!-- Versão do app -->
+    <item android:gravity="bottom|center_horizontal" android:bottom="16dp">
+        <bitmap
+            android:gravity="bottom|center_horizontal">
+            <shape>
+                <solid android:color="@android:color/transparent" />
+                <size android:width="100dp" android:height="20dp" />
+            </shape>
+        </bitmap>
+    </item>
+</layer-list>
